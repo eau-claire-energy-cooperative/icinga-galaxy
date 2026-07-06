@@ -1,6 +1,6 @@
 # Icinga Galaxy
 
-![alt text](images/galaxy_errors.png "Galaxy Demo")
+![alt text](images/galaxy-errors.png "Galaxy Demo")
 
 Visualize the health of various Icinga system checks in the form a spiral galaxy. Both host and service checks are modeled as stars within the galaxy arms and will change colors, grow, and shrink, based on their state. 
 
