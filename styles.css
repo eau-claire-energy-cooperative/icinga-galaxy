@@ -1,0 +1,252 @@
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+background: #06070f;
+color: #a0aace;
+font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+display: flex;
+flex-direction: column;
+align-items: center;
+min-height: 100vh;
+overflow-x: hidden;
+}
+
+#app {
+width: 100%;
+margin: 0 auto;
+display: flex;
+flex-direction: column;
+align-items: center;
+gap: 20px;
+padding: 20px 16px;
+}
+
+#canvas-wrap {
+position: relative;
+width: 100%;
+/* The rendered disc is tilted (see TILT in the draw code), which flattens
+   it vertically — so a landscape box matches its natural shape far
+   better than a square one, and lets it grow much larger on wide/TV
+   screens instead of being capped by viewport width. */
+height: 78vh;
+}
+
+canvas {
+display: block;
+width: 100%;
+height: 100%;
+}
+
+#health-label {
+position: absolute;
+top: 16px;
+left: 50%;
+transform: translateX(-50%);
+font-size: 10px;
+letter-spacing: 0.18em;
+text-transform: uppercase;
+color: #3a4060;
+pointer-events: none;
+white-space: nowrap;
+}
+
+#data-status {
+position: absolute;
+top: 32px;
+left: 50%;
+transform: translateX(-50%);
+font-size: 8px;
+letter-spacing: 0.16em;
+text-transform: uppercase;
+pointer-events: none;
+white-space: nowrap;
+}
+#data-status.demo         { color: #3a4060; }
+#data-status.live         { color: #3a8a5c; }
+#data-status.disconnected { color: #a06030; }
+
+#canvas-tooltip {
+position: absolute;
+display: none;
+pointer-events: none;
+background: #0b0d1cee;
+border: 1px solid #262c4a;
+border-radius: 6px;
+padding: 8px 10px;
+font-size: 10px;
+line-height: 1.5;
+color: #c8d0ee;
+z-index: 5;
+white-space: nowrap;
+}
+.tt-critical { color: #e0607a; }
+.tt-warning  { color: #e0a850; }
+.tt-unknown  { color: #b090e8; }
+.tt-offline  { color: #6a5aa0; }
+.tt-ok       { color: #4ac088; }
+
+/* ─── Console ──────────────────────────────────────────────────────────── */
+#console {
+width: 100%;
+max-width: 780px;
+display: flex;
+flex-direction: column;
+gap: 10px;
+}
+
+/* Once real Icinga data connects, only the totals stay visible — the rest
+ of the console was demo/dev tooling for exercising the visualization. */
+#console.minimal #scenario-bar,
+#console.minimal #filter-bar,
+#console.minimal #list-meta,
+#console.minimal #sensor-list {
+display: none;
+}
+
+#summary-bar { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
+.sum-chip {
+font-size: 20px;
+letter-spacing: 0.08em;
+padding: 4px 9px;
+border-radius: 20px;
+background: #0b0d1c;
+border: 1px solid #181c30;
+color: #6a749a;
+}
+.sum-chip span { color: #c8d0ee; font-weight: 600; margin-right: 4px; }
+.sum-chip.sum-ok       { border-color: #16321f; }
+.sum-chip.sum-warning  { border-color: #3a2010; }
+.sum-chip.sum-critical { border-color: #3a1020; }
+.sum-chip.sum-unknown  { border-color: #2a1840; }
+.sum-chip.sum-offline  { border-color: #1a1030; }
+
+#scenario-bar { display: flex; flex-wrap: wrap; gap: 8px; }
+#scenario-bar button, #filter-bar input, .chip {
+font-family: inherit;
+font-size: 10px;
+letter-spacing: 0.06em;
+text-transform: uppercase;
+color: #7a86b8;
+background: #0b0d1c;
+border: 1px solid #181c30;
+border-radius: 6px;
+padding: 7px 10px;
+cursor: pointer;
+transition: border-color 0.2s, color 0.2s;
+}
+#scenario-bar button:hover { border-color: #3a4a8a; color: #c8d0ee; }
+#scenario-bar button:disabled { opacity: 0.35; cursor: not-allowed; }
+#scenario-bar button:disabled:hover { border-color: #181c30; color: #7a86b8; }
+
+#filter-bar { display: flex; flex-direction: column; gap: 8px; }
+#search-input { width: 100%; cursor: text; text-transform: none; letter-spacing: normal; }
+#search-input::placeholder { color: #3a4468; }
+#tier-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip.active { color: #c8d0ee; border-color: #4466cc; }
+
+#list-meta {
+font-size: 9px;
+letter-spacing: 0.1em;
+text-transform: uppercase;
+color: #2a3050;
+}
+
+#sensor-list {
+flex: 1;
+overflow-y: auto;
+min-height: 200px;
+max-height: 60vh;
+border: 1px solid #181c30;
+border-radius: 10px;
+background: #0b0d1c;
+}
+
+.sensor-row { border-bottom: 1px solid #12152a; cursor: pointer; }
+.sensor-row:last-child { border-bottom: none; }
+.row-main {
+display: flex;
+align-items: center;
+gap: 8px;
+padding: 7px 12px;
+font-size: 11px;
+}
+.row-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+.tier-ok       .row-dot { background: #1e6640; }
+.tier-warning  .row-dot { background: #cc9822; }
+.tier-critical .row-dot { background: #e04060; }
+.tier-unknown  .row-dot { background: #9a6ae0; }
+.tier-offline  .row-dot { background: #6a5aa0; }
+
+.row-host    { color: #5a648e; width: 130px; flex-shrink: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.row-service { color: #8892c0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.row-val     { font-variant-numeric: tabular-nums; color: #c8d0ee; flex-shrink: 0; }
+.tier-warning  .row-val { color: #e0a850; }
+.tier-critical .row-val { color: #e0607a; }
+.tier-unknown  .row-val { color: #b090e8; }
+.tier-offline  .row-val { color: #6a5aa0; }
+
+.sensor-row.expanded { background: #0f1226; }
+.sensor-row.focused { animation: focusFlash 2s ease-out; }
+@keyframes focusFlash {
+0% { background: #24305c; }
+100% { background: transparent; }
+}
+
+.row-controls {
+display: flex;
+align-items: center;
+gap: 10px;
+padding: 4px 12px 12px 26px;
+flex-wrap: wrap;
+}
+.row-output {
+width: 100%;
+font-size: 9px;
+color: #4a5488;
+letter-spacing: 0.02em;
+margin-bottom: 2px;
+}
+.row-readonly-note {
+font-size: 9px;
+letter-spacing: 0.08em;
+text-transform: uppercase;
+color: #2a3050;
+}
+.row-state-buttons { display: flex; gap: 4px; flex-wrap: wrap; }
+.state-btn, .offline-btn {
+font-family: inherit;
+font-size: 9px;
+letter-spacing: 0.06em;
+text-transform: uppercase;
+color: #5a648e;
+background: #131730;
+border: 1px solid #1e2340;
+border-radius: 5px;
+padding: 4px 7px;
+cursor: pointer;
+}
+.state-btn.active   { color: #fff; border-color: #4466cc; background: #1a3a88; }
+.offline-btn.active { color: #fff; border-color: #7a3aa0; background: #4a2060; }
+
+#toast {
+position: fixed;
+bottom: 20px;
+left: 50%;
+transform: translateX(-50%) translateY(20px);
+background: #12152a;
+border: 1px solid #262c4a;
+color: #c8d0ee;
+font-size: 11px;
+letter-spacing: 0.04em;
+padding: 10px 18px;
+border-radius: 8px;
+opacity: 0;
+transition: opacity 0.3s, transform 0.3s;
+pointer-events: none;
+z-index: 20;
+}
+#toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+@media (max-width: 600px) {
+#sensor-list { max-height: 46vh; }
+}

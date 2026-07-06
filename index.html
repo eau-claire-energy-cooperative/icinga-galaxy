@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Icinga Galaxy</title>
+<link href="styles.css" rel="stylesheet">
+</head>
+<body>
+
+<div id="app">
+  <div id="canvas-wrap">
+    <canvas id="galaxy"></canvas>
+    <div id="health-label">System Health</div>
+    <div id="data-status" class="demo">Demo data</div>
+    <div id="canvas-tooltip"></div>
+  </div>
+
+  <div id="console">
+    <div id="summary-bar">
+      <span class="sum-chip sum-ok"><span id="sum-ok">0</span>OK</span>
+      <span class="sum-chip sum-warning"><span id="sum-warning">0</span>WARN</span>
+      <span class="sum-chip sum-critical"><span id="sum-critical">0</span>CRIT</span>
+      <span class="sum-chip sum-unknown"><span id="sum-unknown">0</span>UNK</span>
+      <span class="sum-chip sum-offline"><span id="sum-offline">0</span>DOWN</span>
+    </div>
+
+    <div id="scenario-bar">
+      <button id="btn-randomize">Randomize All</button>
+      <button id="btn-incident">Trigger Incident</button>
+      <button id="btn-hostdown">Simulate Host Down</button>
+      <button id="btn-reset">Reset All</button>
+    </div>
+
+    <div id="filter-bar">
+      <input id="search-input" type="text" placeholder="Filter by host, service, or group…">
+      <div id="tier-chips">
+        <button class="chip active" data-tier="all">All</button>
+        <button class="chip" data-tier="critical">Critical</button>
+        <button class="chip" data-tier="warning">Warning</button>
+        <button class="chip" data-tier="unknown">Unknown</button>
+        <button class="chip" data-tier="offline">Offline</button>
+        <button class="chip" data-tier="ok">OK</button>
+      </div>
+    </div>
+
+    <div id="list-meta"><span id="list-count">0</span> sensors shown</div>
+    <div id="sensor-list"></div>
+  </div>
+</div>
+
+<div id="toast"></div>
+<script src="galaxy-4arm.js"></script>
+<script>
+// ─── Startup ──────────────────────────────────────────────────────────────
+buildMockWorld();
+computeLayout();
+spawnParticles();
+latestStats  = recomputeStats();
+latestFlares = computeFlares();
+updateSummaryBar(latestStats.counts);
+setDataStatus('demo');
+renderList();
+draw();
+
+pollSnapshot();
+setInterval(pollSnapshot, POLL_INTERVAL_MS);
+</script>
+</body>
+</html>
