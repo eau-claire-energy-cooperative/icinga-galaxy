@@ -68,6 +68,7 @@ def build_snapshot(session, base_url, check_sources, timeout):
 
     hosts = []
     host_down = {}
+    sensors = []
     for r in host_results:
         attrs = r["attrs"]
         name = attrs["name"]
@@ -79,6 +80,17 @@ def build_snapshot(session, base_url, check_sources, timeout):
             "down": down,
         })
         host_down[name] = down
+        # Every host gets its own "Host" sensor representing overall reachability,
+        # independent of whatever services it does or doesn't have — a host with
+        # no services (or all-healthy services) still needs to visualize as down.
+        sensors.append({
+            "id": f"{name}!host",
+            "host": name,
+            "service": "Host",
+            "state": 2 if down else 0,
+            "output": "Host is DOWN" if down else "Host is UP",
+            "offline": down,
+        })
 
     if not hosts:
         print(f"Warning: no hosts matched check_source(s) {check_sources!r} — "
@@ -90,7 +102,6 @@ def build_snapshot(session, base_url, check_sources, timeout):
         check_sources=check_sources, timeout=timeout,
     )
 
-    sensors = []
     for r in service_results:
         attrs = r["attrs"]
         host_name = attrs["host_name"]

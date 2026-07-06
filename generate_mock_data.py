@@ -66,6 +66,17 @@ def build_snapshot() -> dict:
             down = random.random() < 0.015
             hosts.append({"id": host_id, "group": group, "down": down})
 
+            # Every host gets its own "Host" sensor representing overall reachability,
+            # independent of whatever services it does or doesn't have.
+            sensors.append({
+                "id": f"{host_id}!host",
+                "host": host_id,
+                "service": "Host",
+                "state": 2 if down else 0,
+                "output": "Host is DOWN" if down else "Host is UP",
+                "offline": down,
+            })
+
             service_pool = random.sample(SERVICE_NAMES, random.randint(4, min(8, len(SERVICE_NAMES))))
             for service in service_pool:
                 state = weighted_state()
