@@ -64,6 +64,16 @@ function getSeverity(s) {
 function sensorTier(s) {
   return s.offline ? 'offline' : STATE_KEYS[s.state];
 }
+// The synthetic per-host reachability sensor (added alongside whatever real
+// services a host has) is binary — up or down — never warning/unknown, so it
+// stays out of the random-roll paths that only make sense for service checks.
+function isHostSensor(s) {
+  return s.service === 'Host';
+}
+function setHostSensorState(s, down) {
+  s.state  = down ? 2 : 0;
+  s.output = down ? 'Host is DOWN' : 'Host is UP';
+}
 function normalizeStateCode(raw) {
   return Number.isFinite(raw) ? clamp(Math.round(raw), 0, 3) : 3; // malformed → UNKNOWN
 }
@@ -131,6 +141,20 @@ function buildMockWorld() {
       hosts.push(host);
       hostsById.set(hostId, host);
       group.hostIds.push(hostId);
+
+      // Every host gets its own "Host" sensor representing overall
+      // reachability, independent of whatever services it does or doesn't have.
+      const hostSensorId = `${hostId}!host`;
+      const hostSensor = {
+        id: hostSensorId, groupId: gi, hostId,
+        host: hostId, service: 'Host', state: 0, output: '',
+        offline: host.down, seed: hashString(hostSensorId),
+      };
+      setHostSensorState(hostSensor, host.down);
+      sensors.push(hostSensor);
+      sensorsById.set(hostSensor.id, hostSensor);
+      group.sensorIds.push(hostSensor.id);
+      host.sensorIds.push(hostSensor.id);
 
       const svcCount = randInt(4, Math.min(8, SERVICE_NAMES.length));
       shuffle(SERVICE_NAMES).slice(0, svcCount).forEach(service => {
@@ -485,7 +509,8 @@ document.getElementById('btn-randomize').addEventListener('click', () => {
     host.sensorIds.forEach(id => {
       const s = sensorsById.get(id);
       s.offline = host.down;
-      if (!host.down) applySensorRoll(s);
+      if (isHostSensor(s)) setHostSensorState(s, host.down);
+      else if (!host.down) applySensorRoll(s);
     });
   });
   state.expandedId = null;
@@ -495,7 +520,8 @@ document.getElementById('btn-randomize').addEventListener('click', () => {
 
 document.getElementById('btn-incident').addEventListener('click', () => {
   const group = pick(groups);
-  const affected = shuffle(group.sensorIds).slice(0, Math.ceil(group.sensorIds.length * (0.4 + Math.random() * 0.3)));
+  const candidates = group.sensorIds.filter(id => !isHostSensor(sensorsById.get(id)));
+  const affected = shuffle(candidates).slice(0, Math.ceil(candidates.length * (0.4 + Math.random() * 0.3)));
   affected.forEach(id => {
     const s = sensorsById.get(id);
     if (s.offline) return;
@@ -519,7 +545,8 @@ document.getElementById('btn-reset').addEventListener('click', () => {
   hosts.forEach(h => { h.down = false; });
   sensors.forEach(s => {
     s.offline = false;
-    setState(s, 0);
+    if (isHostSensor(s)) setHostSensorState(s, false);
+    else setState(s, 0);
   });
   state.expandedId = null;
   renderList();
@@ -533,7 +560,7 @@ setInterval(() => {
   const n = randInt(1, 3);
   for (let i = 0; i < n; i++) {
     const s = pick(sensors);
-    if (s.offline) continue;
+    if (s.offline || isHostSensor(s)) continue;
     liveNudge(s);
     updateRowInPlace(s.id);
   }
