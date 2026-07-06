@@ -180,16 +180,20 @@ function buildMockWorld() {
 //   {
 //     "hosts":   [ { "id": "web-01", "group": "Web Frontend", "down": false } ],
 //     "sensors": [ { "id": "web-01!http", "host": "web-01", "service": "HTTP Check",
-//                    "state": 0, "output": "HTTP OK", "offline": false } ]
+//                    "state": 0, "output": "HTTP OK", "offline": false } ],
+//     "last_update": "2026-07-06T14:23:01-04:00"
 //   }
 // state is Icinga's native 0=OK/1=WARNING/2=CRITICAL/3=UNKNOWN code. 'offline'
 // is the source's final word on whether the check is reporting at all (host
 // down, stale, unreachable, etc.) — this page trusts it as-is and never tries
 // to infer it. sensors[].id should be stable across polls (e.g. "host!service").
+// last_update is the poller's local system time when it wrote the file (ISO 8601);
+// optional so demo/older snapshots without it still work.
 const DATA_URL = 'sensors.json';
 const POLL_INTERVAL_MS = 60000;
 let liveMode = false; // becomes true (and stays true) once a live poll succeeds
 let lastFingerprint = null;
+let lastUpdateTime = null; // last_update from the most recent successful live poll
 
 function computeFingerprint(snapshot) {
   const ids = [];
@@ -271,12 +275,19 @@ function applyIncrementalUpdate(snapshot) {
   });
 }
 
+function formatLastUpdate(iso) {
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '';
+  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+}
+
 function setDataStatus(mode) {
   if (mode === 'live') liveMode = true;
   const el = document.getElementById('data-status');
   el.className = mode;
-  el.textContent = mode === 'live' ? 'Live · Icinga'
-    : mode === 'disconnected' ? 'Disconnected — showing last known state'
+  const stamp = lastUpdateTime ? formatLastUpdate(lastUpdateTime) : '';
+  el.textContent = mode === 'live' ? 'Live · Icinga' + (stamp ? ` · updated ${stamp}` : '')
+    : mode === 'disconnected' ? 'Disconnected — showing last known state' + (stamp ? ` (as of ${stamp})` : '')
     : 'Demo data';
   document.querySelectorAll('#scenario-bar button').forEach(b => { b.disabled = liveMode; });
   document.getElementById('console').classList.toggle('minimal', liveMode);
@@ -299,6 +310,7 @@ async function pollSnapshot() {
     } else {
       applyIncrementalUpdate(snapshot);
     }
+    if (snapshot.last_update) lastUpdateTime = snapshot.last_update;
     setDataStatus('live');
     if (!wasLive) {
       state.expandedId = null;

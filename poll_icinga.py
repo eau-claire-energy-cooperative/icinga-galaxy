@@ -23,6 +23,7 @@ import json
 import os
 import re
 import sys
+from datetime import datetime
 
 import requests
 
@@ -161,6 +162,8 @@ def main():
     except requests.exceptions.RequestException as e:
         print(f"Could not reach Icinga API at {args.url}: {e}", file=sys.stderr)
         sys.exit(1)
+
+    snapshot["last_update"] = datetime.now().astimezone().isoformat(timespec="seconds")
 
     with open(args.out, "w", encoding="utf-8") as f:
         json.dump(snapshot, f, indent=2)

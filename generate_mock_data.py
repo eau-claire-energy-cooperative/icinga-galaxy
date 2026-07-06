@@ -10,7 +10,8 @@ Schema:
   "hosts":   [ { "id": str, "group": str, "down": bool } ],
   "sensors": [ { "id": str, "host": str, "service": str,
                  "state": int,   # 0=OK, 1=WARNING, 2=CRITICAL, 3=UNKNOWN
-                 "output": str, "offline": bool } ]
+                 "output": str, "offline": bool } ],
+  "last_update": str  # ISO 8601 timestamp of when the file was written
 }
 
 sensors[].host must match a hosts[].id. sensors[].id should be stable
@@ -20,6 +21,7 @@ import argparse
 import json
 import random
 import re
+from datetime import datetime
 
 GROUP_NAMES = [
     "Web Frontend", "API Services", "Database Cluster", "Cache Layer",
@@ -93,6 +95,7 @@ def build_snapshot() -> dict:
 
 
 def write_snapshot(snapshot: dict, out_path: str) -> None:
+    snapshot["last_update"] = datetime.now().astimezone().isoformat(timespec="seconds")
     with open(out_path, "w", encoding="utf-8") as f:
         json.dump(snapshot, f, indent=2)
 
