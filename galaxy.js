@@ -790,7 +790,7 @@ function draw() {
   // Spiral particles
   const growth  = 30 * SCALE;
   const baseR   = 18 * SCALE;
-  const rotTime = time * 0.0005;
+  const rotTime = -time * 0.0005;
 
   for (const p of particles) {
     const dev    = smoothDev[p.wedge];
