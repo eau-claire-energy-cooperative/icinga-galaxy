@@ -187,7 +187,7 @@ function buildMockWorld() {
 // down, stale, unreachable, etc.) — this page trusts it as-is and never tries
 // to infer it. sensors[].id should be stable across polls (e.g. "host!service").
 const DATA_URL = 'sensors.json';
-const POLL_INTERVAL_MS = 5000;
+const POLL_INTERVAL_MS = 60000;
 let liveMode = false; // becomes true (and stays true) once a live poll succeeds
 let lastFingerprint = null;
 
