@@ -190,7 +190,7 @@ function buildMockWorld() {
 // last_update is the poller's local system time when it wrote the file (ISO 8601);
 // optional so demo/older snapshots without it still work.
 const DATA_URL = 'sensors.json';
-const POLL_INTERVAL_MS = 60000;
+const POLL_INTERVAL_MS = 30000;
 let liveMode = false; // becomes true (and stays true) once a live poll succeeds
 let lastFingerprint = null;
 let lastUpdateTime = null; // last_update from the most recent successful live poll
