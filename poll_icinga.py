@@ -17,7 +17,7 @@ Find your zone/check_source names via Icinga Web 2 ("Zones" under
 Configuration), or by inspecting last_check_result.check_source on any
 existing host/service in /v1/objects/hosts.
 """
-import argparse
+import configargparse
 import getpass
 import json
 import os
@@ -137,7 +137,8 @@ def resolve_password(args):
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser = configargparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument('-c', '--config', is_config_file=True, help='Path to custom config file')
     parser.add_argument("--url", required=True, help="Icinga2 API base URL, e.g. https://icinga.example.com:5665")
     parser.add_argument("--username", required=True)
     parser.add_argument("--password", help="If omitted, falls back to the ICINGA_PASSWORD env var")
