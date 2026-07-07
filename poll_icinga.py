@@ -22,17 +22,16 @@ import getpass
 import json
 import os
 import re
+import requests
 import sys
 from datetime import datetime
-
-import requests
 
 
 def slug(name: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
 
 
-def build_session(username, password, ca_cert, insecure):
+def build_session(username, password, insecure):
     session = requests.Session()
     session.auth = (username, password)
     session.headers.update({"Accept": "application/json"})
@@ -41,8 +40,7 @@ def build_session(username, password, ca_cert, insecure):
         requests.packages.urllib3.disable_warnings(  # user explicitly opted out of verification
             requests.packages.urllib3.exceptions.InsecureRequestWarning
         )
-    elif ca_cert:
-        session.verify = ca_cert
+
     return session
 
 
@@ -60,7 +58,7 @@ def icinga_query(session, base_url, object_type, attrs, check_sources, timeout):
     return resp.json().get("results", [])
 
 
-def build_snapshot(session, base_url, check_sources, timeout):
+def build_snapshot(session, base_url, check_sources, icinga_groups, timeout):
     host_results = icinga_query(
         session, base_url, "hosts",
         attrs=["name", "state", "groups"],
@@ -75,15 +73,20 @@ def build_snapshot(session, base_url, check_sources, timeout):
         name = attrs["name"]
         groups = attrs.get("groups") or []
         down = int(attrs.get("state", 0)) != 0
+
+        if(icinga_groups):
+            # reduce to only intersected groups
+            groups = sorted(set(groups) & set(icinga_groups))
+
         hosts.append({
             "id": name,
-            "group": groups[0] if groups else "Ungrouped",  # first group is primary, per user's convention
+            "group": groups[0] if groups else "ungrouped",  # use first group
             "down": down,
         })
         host_down[name] = down
+
         # Every host gets its own "Host" sensor representing overall reachability,
-        # independent of whatever services it does or doesn't have — a host with
-        # no services (or all-healthy services) still needs to visualize as down.
+        # independent of whatever services it does or doesn't have
         sensors.append({
             "id": f"{name}!host",
             "host": name,
@@ -124,25 +127,27 @@ def build_snapshot(session, base_url, check_sources, timeout):
 
 
 def resolve_password(args):
+    result = None
     if args.password:
-        return args.password
+        result = args.password
     env_password = os.environ.get("ICINGA_PASSWORD")
     if env_password:
-        return env_password
-    return getpass.getpass(f"Icinga password for {args.username}: ")
+        result = env_password
+    return result
 
 
 def parse_args():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--url", required=True, help="Icinga2 API base URL, e.g. https://icinga.example.com:5665")
     parser.add_argument("--username", required=True)
-    parser.add_argument("--password", help="If omitted, falls back to the ICINGA_PASSWORD env var, "
-                                            "then an interactive prompt (avoid passing plaintext passwords on the CLI)")
+    parser.add_argument("--password", help="If omitted, falls back to the ICINGA_PASSWORD env var")
     parser.add_argument("--check-source", dest="check_sources", action="append", required=True,
                          help="Zone/satellite name to include (repeatable: --check-source site-a --check-source site-b)")
+    parser.add_argument("--groups", dest="groups", action="append", required=False,
+                         help="Icinga group names to use for grouping, if included only these groups are used"
+                               " if ommited then first group in host group list is used (repeatable, --group a --group b)")
     parser.add_argument("--out", default="sensors.json", help="Output path for the JSON snapshot (default: sensors.json)")
     parser.add_argument("--insecure", action="store_true", help="Skip TLS certificate verification (self-signed certs)")
-    parser.add_argument("--ca-cert", help="Path to a CA bundle to verify the Icinga API's certificate against")
     parser.add_argument("--timeout", type=float, default=30.0, help="HTTP request timeout in seconds (default: 30)")
     return parser.parse_args()
 
@@ -150,10 +155,15 @@ def parse_args():
 def main():
     args = parse_args()
     password = resolve_password(args)
-    session = build_session(args.username, password, args.ca_cert, args.insecure)
+
+    if(password is None):
+        print("Password for Icinga could not be found")
+        sys.exit(1)
+
+    session = build_session(args.username, password, args.insecure)
 
     try:
-        snapshot = build_snapshot(session, args.url, args.check_sources, args.timeout)
+        snapshot = build_snapshot(session, args.url, args.check_sources, args.groups, args.timeout)
     except requests.exceptions.HTTPError as e:
         detail = e.response.text if e.response is not None else str(e)
         print(f"Icinga API returned HTTP {e.response.status_code if e.response is not None else '?'}: {detail}",
@@ -163,8 +173,10 @@ def main():
         print(f"Could not reach Icinga API at {args.url}: {e}", file=sys.stderr)
         sys.exit(1)
 
+    # set the last update time
     snapshot["last_update"] = datetime.now().astimezone().isoformat(timespec="seconds")
 
+    # write the output file
     with open(args.out, "w", encoding="utf-8") as f:
         json.dump(snapshot, f, indent=2)
     print(f"Wrote {len(snapshot['hosts'])} hosts / {len(snapshot['sensors'])} sensors to {args.out}")
