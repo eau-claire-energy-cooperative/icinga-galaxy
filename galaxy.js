@@ -622,26 +622,44 @@ const particles = [];
 
 let wedgeWeights = [];
 let wedgeBounds  = [];
+let groupArm     = [];
 let smoothDev     = [];
 let smoothOffline = [];
 
 // Lays out wedge angular bounds per group, then anchors each host to a fixed
 // slot within its group's arc (evenly spaced by index, not random) so a
 // host's services always render in the same small patch of sky — a host in
-// trouble reads as one cluster of flares, not scattered dots. Re-run whenever
-// the group/host/sensor topology changes (initial load, or a live rebuild).
+// trouble reads as one cluster of flares, not scattered dots. Each group is
+// assigned to a single arm (greedily, by descending weight, to whichever arm
+// currently has less total weight) so a group's activity clumps into one
+// spot on one arm instead of being split/mirrored across both. Re-run
+// whenever the group/host/sensor topology changes (initial load, or a live
+// rebuild).
 function computeLayout() {
   const w = groups.map(g => Math.sqrt(g.sensorIds.length || 1));
   const total = w.reduce((a, b) => a + b, 0) || 1;
   wedgeWeights = w.map(x => x / total);
 
+  const order = groups.map((g, i) => i).sort((a, b) => w[b] - w[a]);
+  const armWeight = [0, 0];
+  groupArm = groups.map(() => 0);
+  order.forEach(i => {
+    const arm = armWeight[0] <= armWeight[1] ? 0 : 1;
+    groupArm[i] = arm;
+    armWeight[arm] += w[i];
+  });
+  const armTotal = [0, 1].map(arm =>
+    groups.reduce((sum, g, i) => sum + (groupArm[i] === arm ? w[i] : 0), 0) || 1
+  );
+
   wedgeBounds = [];
-  let acc = THETA_MIN;
-  for (let i = 0; i < groups.length; i++) {
-    const span = (THETA_MAX - THETA_MIN) * wedgeWeights[i];
-    wedgeBounds.push([acc, acc + span]);
-    acc += span;
-  }
+  const armAcc = [THETA_MIN, THETA_MIN];
+  groups.forEach((g, i) => {
+    const arm = groupArm[i];
+    const span = (THETA_MAX - THETA_MIN) * (w[i] / armTotal[arm]);
+    wedgeBounds.push([armAcc[arm], armAcc[arm] + span]);
+    armAcc[arm] += span;
+  });
 
   hosts.forEach(host => {
     const [lo, hi] = wedgeBounds[host.groupId];
@@ -649,7 +667,7 @@ function computeLayout() {
     const frac = (host.slot + 0.5) / host.slotCount;
     host.theta     = lo + frac * span;
     host.slotWidth = span / host.slotCount;
-    host.armPick   = hashJitter(host.seed, 7) < 0.5 ? 0 : 1;
+    host.armPick   = groupArm[host.groupId];
   });
 
   smoothDev     = groups.map(() => 0);
@@ -667,8 +685,8 @@ function pickWedge() {
 }
 
 function makeParticle() {
-  const arm = Math.floor(Math.random() * 2);
   const wedge = pickWedge();
+  const arm = groupArm[wedge];
   const [lo, hi] = wedgeBounds[wedge];
   const theta = lo + Math.random() * (hi - lo);
   return {
