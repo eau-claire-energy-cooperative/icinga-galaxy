@@ -353,14 +353,31 @@ function recomputeStats() {
   };
 }
 
-function computeFlares(limit = 26) {
-  const scored = [];
+// Per-group cap, not global: each group's flares are judged only against its
+// own size (50% of the group's sensors, capped at 8). Past that, an
+// arbitrary slice of individual flares reads as noisy/random rather than
+// informative — drop that group's flares entirely and let its own glow/
+// contraction effects (driven independently of this list) carry the
+// "widespread incident" visual instead. A handful of scattered issues across
+// many groups still shows real flares in each of them; a group melting down
+// on its own falls back to the ambient effect once it crosses its own cap.
+function computeFlares() {
+  const byGroup = new Map();
   for (const s of sensors) {
     const sev = getSeverity(s);
-    if (s.offline || sev >= 0.45) scored.push({ s, sev });
+    if (!s.offline && sev < 0.45) continue;
+    if (!byGroup.has(s.groupId)) byGroup.set(s.groupId, []);
+    byGroup.get(s.groupId).push({ s, sev });
   }
-  scored.sort((a, b) => b.sev - a.sev);
-  return scored.slice(0, limit);
+
+  const result = [];
+  for (const [groupId, scored] of byGroup) {
+    const cap = Math.min((groups[groupId].sensorIds.length || 1) * 0.5, 8);
+    if (scored.length > cap) continue;
+    result.push(...scored);
+  }
+  result.sort((a, b) => b.sev - a.sev);
+  return result;
 }
 
 // ─── Console: filter / search / row rendering ──────────────────────────────
