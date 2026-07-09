@@ -322,9 +322,16 @@ async function pollSnapshot() {
   }
 }
 
+// Shared by recomputeStats (ambient push) and computeFlares (marker cap) so the
+// two stay tied to the same per-group budget instead of drifting apart.
+function flareCapFor(group) {
+  return Math.min((group.sensorIds.length || 1) * 0.5, 10);
+}
+
 function recomputeStats() {
   const groupSum     = new Float64Array(groups.length);
   const groupCrit     = new Float64Array(groups.length);
+  const groupBad      = new Float64Array(groups.length);
   const groupOffline = new Float64Array(groups.length);
   const groupN        = new Float64Array(groups.length);
   const counts = { ok: 0, warning: 0, critical: 0, unknown: 0, offline: 0 };
@@ -338,12 +345,22 @@ function recomputeStats() {
     groupSum[s.groupId] += sev;
     if (s.offline) groupOffline[s.groupId]++;
     else if (sev >= 0.85) groupCrit[s.groupId]++;
+    // Same eligibility test computeFlares uses (sev >= 0.45, offline excluded —
+    // offline already drives its own contraction signal below).
+    if (!s.offline && sev >= 0.45) groupBad[s.groupId]++;
     globalBadSum += s.offline ? 0.6 : sev;
   }
 
+  // capPressure is "how close is this group to the point where its individual
+  // flare markers get dropped for being too crowded" (0 = none, 1 = at/over the
+  // cap). Blending it into dev means low-severity incidents (mostly WARNING,
+  // which barely move the severity-average terms below) still visibly push the
+  // arm outward right around the same threshold where their markers disappear,
+  // instead of the flares vanishing with no ambient effect to replace them.
   const groupDev = groups.map((g, i) => {
     const n = groupN[i] || 1;
-    return clamp((groupSum[i] / n) * 0.55 + (groupCrit[i] / n) * 0.9, 0, 1);
+    const capPressure = clamp(groupBad[i] / flareCapFor(g), 0, 1) * .6;
+    return clamp((groupSum[i] / n) * 0.55 + (groupCrit[i] / n) * 0.9 + capPressure * 0.35, 0, 1);
   });
   const groupOfflineFrac = groups.map((g, i) => groupN[i] ? groupOffline[i] / groupN[i] : 0);
 
@@ -372,7 +389,7 @@ function computeFlares() {
 
   const result = [];
   for (const [groupId, scored] of byGroup) {
-    const cap = Math.min((groups[groupId].sensorIds.length || 1) * 0.5, 8);
+    const cap = flareCapFor(groups[groupId]);
     if (scored.length > cap) continue;
     result.push(...scored);
   }
