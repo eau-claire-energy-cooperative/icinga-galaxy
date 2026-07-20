@@ -61,7 +61,7 @@ def icinga_query(session, base_url, object_type, attrs, check_sources, timeout):
 def build_snapshot(session, base_url, check_sources, icinga_groups, timeout):
     host_results = icinga_query(
         session, base_url, "hosts",
-        attrs=["name", "state", "groups"],
+        attrs=["name", "state", "groups", "acknowledgement"],
         check_sources=check_sources, timeout=timeout,
     )
 
@@ -71,6 +71,7 @@ def build_snapshot(session, base_url, check_sources, icinga_groups, timeout):
     for r in host_results:
         attrs = r["attrs"]
         name = attrs["name"]
+        ack = attrs["acknowledgement"]
         groups = attrs.get("groups") or []
         down = int(attrs.get("state", 0)) != 0
 
@@ -93,6 +94,7 @@ def build_snapshot(session, base_url, check_sources, icinga_groups, timeout):
             "service": "Host",
             "state": 2 if down else 0,
             "output": "Host is DOWN" if down else "Host is UP",
+            "acknowledgement": ack,
             "offline": down,
         })
 
@@ -102,7 +104,7 @@ def build_snapshot(session, base_url, check_sources, icinga_groups, timeout):
 
     service_results = icinga_query(
         session, base_url, "services",
-        attrs=["name", "host_name", "state", "last_check_result"],
+        attrs=["name", "host_name", "state", "last_check_result", "acknowledgement"],
         check_sources=check_sources, timeout=timeout,
     )
 
@@ -112,6 +114,7 @@ def build_snapshot(session, base_url, check_sources, icinga_groups, timeout):
         if host_name not in host_down:
             continue  # host filtered out (shouldn't normally happen — same check_source filter)
         service_name = attrs["name"]
+        service_ack = attrs["acknowledgement"]
         offline = host_down[host_name]  # per spec: offline iff host is down; otherwise trust service.state
         last_check_result = attrs.get("last_check_result") or {}
         sensors.append({
@@ -120,6 +123,7 @@ def build_snapshot(session, base_url, check_sources, icinga_groups, timeout):
             "service": service_name,
             "state": int(attrs.get("state", 3)),
             "output": last_check_result.get("output") or "",
+            "acknowledgement": service_ack,
             "offline": offline,
         })
 

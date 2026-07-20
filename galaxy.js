@@ -70,6 +70,12 @@ function sensorTier(s) {
 function isHostSensor(s) {
   return s.service === 'Host';
 }
+// Icinga's acknowledgement code: 0 = none, 1 = acknowledged, 2 = sticky.
+// Anything > 0 means the problem is "handled" — a purely visual softening of
+// the flare, never a change to color, particle push, or flare eligibility.
+function isAcknowledged(s) {
+  return (s.ack || 0) > 0;
+}
 function setHostSensorState(s, down) {
   s.state  = down ? 2 : 0;
   s.output = down ? 'Host is DOWN' : 'Host is UP';
@@ -116,9 +122,15 @@ function weightedStateRoll() {
 function setState(s, code) {
   s.state  = code;
   s.output = pick(OUTPUT_PHRASES[code]);
+  if (code === 0) s.ack = 0; // recovery clears any acknowledgement
 }
 
-function applySensorRoll(s) { setState(s, weightedStateRoll()); }
+function applySensorRoll(s) {
+  setState(s, weightedStateRoll());
+  // Demo only: a fraction of active problems are marked "handled" so the
+  // acknowledgement styling is visible without hand-toggling every flare.
+  s.ack = (s.state !== 0 && Math.random() < 0.4) ? 1 : 0;
+}
 
 function liveNudge(s) {
   if (Math.random() < 0.3) applySensorRoll(s);
@@ -147,7 +159,7 @@ function buildMockWorld() {
       const hostSensorId = `${hostId}!host`;
       const hostSensor = {
         id: hostSensorId, groupId: gi, hostId,
-        host: hostId, service: 'Host', state: 0, output: '',
+        host: hostId, service: 'Host', state: 0, output: '', ack: 0,
         offline: host.down, seed: hashString(hostSensorId),
       };
       setHostSensorState(hostSensor, host.down);
@@ -161,7 +173,7 @@ function buildMockWorld() {
         const id = `${hostId}!${slug(service)}`;
         const sensor = {
           id, groupId: gi, hostId,
-          host: hostId, service, state: 0, output: '',
+          host: hostId, service, state: 0, output: '', ack: 0,
           offline: host.down, seed: hashString(id),
         };
         applySensorRoll(sensor);
@@ -180,10 +192,13 @@ function buildMockWorld() {
 //   {
 //     "hosts":   [ { "id": "web-01", "group": "Web Frontend", "down": false } ],
 //     "sensors": [ { "id": "web-01!http", "host": "web-01", "service": "HTTP Check",
-//                    "state": 0, "output": "HTTP OK", "offline": false } ],
+//                    "state": 0, "output": "HTTP OK", "acknowledgement": 0,
+//                    "offline": false } ],
 //     "last_update": "2026-07-06T14:23:01-04:00"
 //   }
-// state is Icinga's native 0=OK/1=WARNING/2=CRITICAL/3=UNKNOWN code. 'offline'
+// state is Icinga's native 0=OK/1=WARNING/2=CRITICAL/3=UNKNOWN code.
+// acknowledgement is Icinga's native 0=none/1=acknowledged/2=sticky code; any
+// value > 0 marks the problem as handled (visual softening only). 'offline'
 // is the source's final word on whether the check is reporting at all (host
 // down, stale, unreachable, etc.) — this page trusts it as-is and never tries
 // to infer it. sensors[].id should be stable across polls (e.g. "host!service").
@@ -239,6 +254,7 @@ function rebuildWorldFromSnapshot(snapshot) {
       host: host.id, service: raw.service || 'Check',
       state: normalizeStateCode(raw.state),
       output: raw.output || '',
+      ack: Number(raw.acknowledgement) || 0,
       offline: !!raw.offline,
       seed: hashString(raw.id),
     };
@@ -271,6 +287,7 @@ function applyIncrementalUpdate(snapshot) {
     if (!sensor) return;
     sensor.state   = normalizeStateCode(raw.state);
     sensor.output  = raw.output || '';
+    sensor.ack     = Number(raw.acknowledgement) || 0;
     sensor.offline = !!raw.offline;
   });
 }
@@ -434,6 +451,12 @@ function rowControlsHtml(s) {
           `<button class="state-btn${s.state === code ? ' active' : ''}" data-state="${code}">${key}</button>`
         ).join('') + `</div>`;
     }
+    // Acknowledge only applies to an active problem (a bad state or offline);
+    // a healthy check has nothing to acknowledge.
+    if (s.offline || s.state !== 0) {
+      html += `<button class="ack-btn${isAcknowledged(s) ? ' active' : ''}" data-id="${escapeHtml(s.id)}">
+        ${isAcknowledged(s) ? 'Acknowledged' : 'Acknowledge'}</button>`;
+    }
     html += `<button class="offline-btn${s.offline ? ' active' : ''}" data-id="${escapeHtml(s.id)}">
       ${s.offline ? 'Bring Online' : 'Take Offline'}</button>`;
   }
@@ -494,6 +517,15 @@ listEl.addEventListener('click', e => {
   if (stateBtn) {
     const id = stateBtn.closest('.row-state-buttons').dataset.id;
     setState(sensorsById.get(id), Number(stateBtn.dataset.state));
+    renderRowOnly(id);
+    return;
+  }
+
+  const ackBtn = e.target.closest('.ack-btn');
+  if (ackBtn) {
+    const id = ackBtn.dataset.id;
+    const s = sensorsById.get(id);
+    s.ack = isAcknowledged(s) ? 0 : 1;
     renderRowOnly(id);
     return;
   }
@@ -775,7 +807,8 @@ function showTooltip(hit, clientX, clientY) {
   const s = sensorsById.get(hit.id);
   const tier = sensorTier(s);
   const detail = s.offline ? 'Host unreachable.' : s.output;
-  tooltipEl.innerHTML = `<b>${escapeHtml(s.host)}</b><br>${escapeHtml(s.service)} — <span class="tt-${tier}">${valueText(s)}</span><br>${escapeHtml(detail)}`;
+  const ackNote = isAcknowledged(s) ? ' <span class="tt-ack">· acknowledged</span>' : '';
+  tooltipEl.innerHTML = `<b>${escapeHtml(s.host)}</b><br>${escapeHtml(s.service)} — <span class="tt-${tier}">${valueText(s)}</span>${ackNote}<br>${escapeHtml(detail)}`;
   const wrapRect = document.getElementById('canvas-wrap').getBoundingClientRect();
   tooltipEl.style.left = `${clientX - wrapRect.left + 14}px`;
   tooltipEl.style.top  = `${clientY - wrapRect.top + 14}px`;
@@ -946,12 +979,19 @@ function draw() {
     const pulse = 0.5 + 0.5 * Math.sin(time * 0.05 + hashJitter(s.seed, 5) * Math.PI * 2);
     const tier  = sensorTier(s);
     const color = FLARE_COLORS[tier] || FLARE_COLORS.critical;
-    const baseSize = (tier === 'offline' ? 3.2 : 2.6 + sev * 1.8) * SCALE * clamp(ps, 0.7, 1.5);
+    // Acknowledged problems keep their tier color but read as "handled": the
+    // core is a touch smaller and the pulsing halo is dropped so they no
+    // longer draw the eye the way an untriaged issue does.
+    const acked = isAcknowledged(s);
+    const baseSize = (tier === 'offline' ? 3.2 : 2.6 + sev * 1.8) * SCALE
+      * clamp(ps, 0.7, 1.5) * (acked ? 0.7 : 1);
 
-    ctx.beginPath();
-    ctx.arc(sx, sy, baseSize * (2.2 + pulse * 0.8), 0, Math.PI * 2);
-    ctx.fillStyle = `rgba(${color[0]},${color[1]},${color[2]},${(0.10 + pulse * 0.10).toFixed(3)})`;
-    ctx.fill();
+    if (!acked) {
+      ctx.beginPath();
+      ctx.arc(sx, sy, baseSize * (2.2 + pulse * 0.8), 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(${color[0]},${color[1]},${color[2]},${(0.10 + pulse * 0.10).toFixed(3)})`;
+      ctx.fill();
+    }
 
     ctx.beginPath();
     ctx.arc(sx, sy, baseSize, 0, Math.PI * 2);

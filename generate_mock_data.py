@@ -10,6 +10,7 @@ Schema:
   "hosts":   [ { "id": str, "group": str, "down": bool } ],
   "sensors": [ { "id": str, "host": str, "service": str,
                  "state": int,   # 0=OK, 1=WARNING, 2=CRITICAL, 3=UNKNOWN
+                 "acknowledgement": int,  # 0=none, 1=acknowledged, 2=sticky
                  "output": str, "offline": bool } ],
   "last_update": str  # ISO 8601 timestamp of when the file was written
 }
@@ -75,6 +76,7 @@ def build_snapshot() -> dict:
                 "host": host_id,
                 "service": "Host",
                 "state": 2 if down else 0,
+                "acknowledgement": 1 if (down and random.random() < 0.4) else 0,
                 "output": "Host is DOWN" if down else "Host is UP",
                 "offline": down,
             })
@@ -87,6 +89,7 @@ def build_snapshot() -> dict:
                     "host": host_id,
                     "service": service,
                     "state": state,
+                    "acknowledgement": 1 if (state != 0 and random.random() < 0.4) else 0,
                     "output": random.choice(OUTPUT_PHRASES[state]),
                     "offline": down,
                 })

@@ -68,6 +68,7 @@ white-space: nowrap;
 .tt-unknown  { color: #b090e8; }
 .tt-offline  { color: #6a5aa0; }
 .tt-ok       { color: #4ac088; }
+.tt-ack      { color: #c8a24a; font-style: italic; }
 
 /* ─── Console ──────────────────────────────────────────────────────────── */
 #console {
@@ -197,7 +198,7 @@ text-transform: uppercase;
 color: #2a3050;
 }
 .row-state-buttons { display: flex; gap: 4px; flex-wrap: wrap; }
-.state-btn, .offline-btn {
+.state-btn, .offline-btn, .ack-btn {
 font-family: inherit;
 font-size: 9px;
 letter-spacing: 0.06em;
@@ -211,6 +212,7 @@ cursor: pointer;
 }
 .state-btn.active   { color: #fff; border-color: #4466cc; background: #1a3a88; }
 .offline-btn.active { color: #fff; border-color: #7a3aa0; background: #4a2060; }
+.ack-btn.active     { color: #fff; border-color: #b08a2a; background: #5a4410; }
 
 #toast {
 position: fixed;
