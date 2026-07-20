@@ -25,8 +25,9 @@ When running the follow rules are applied based on the Icinga host and service s
 * Warnings create a yellow star
 * Unknown creates dark blue stars
 * Down hosts are illustrated with a dark gray color 
+* Unacknowledged, or not in downtime, sensors are larger with a halo effect
 
-As more systems fail within a grouped cluster that portion of the spiral will start to expand and flare. After 26 sensors in a non-OK state the large colored stars are not shown but instead the overall cluster will start to fail. Down hosts contract the arm instead of flaring. If most of the hosts are down the galaxy will appear dark and dead. If most of the hosts are in a non-OK state the galaxy will appear as if it's exploding red/orange. 
+As more systems fail within a grouped cluster that portion of the spiral will start to expand and flare. After 50% of the group, or 10 sensors max, are in a non-OK state the large colored stars are not shown but instead the overall cluster will start to fail. Down hosts contract the arm instead of flaring. If most of the hosts are down the galaxy will appear dark and dead. If most of the hosts are in a non-OK state the galaxy will appear as if it's exploding red/orange. 
 
 ## Credits
 
