@@ -61,3 +61,7 @@ As more systems fail within a grouped cluster that portion of the spiral will st
 
 Portions of this codebase were developed with AI assistance (code generation and suggestions), followed by substantial human review, editing, and revision.
 
+## License 
+
+[AGPLv3](/LICENSE)
+
