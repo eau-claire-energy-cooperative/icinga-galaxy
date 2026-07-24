@@ -1,4 +1,5 @@
 # Icinga Galaxy
+[![standard-readme compliant](https://img.shields.io/badge/readme%20style-standard-brightgreen.svg)](https://github.com/RichardLitt/standard-readme)
 
 ![alt text](images/galaxy-errors.png "Galaxy Demo")
 
@@ -60,6 +61,10 @@ As more systems fail within a grouped cluster that portion of the spiral will st
 ## Credits
 
 Portions of this codebase were developed with AI assistance (code generation and suggestions), followed by substantial human review, editing, and revision.
+
+## Contributing
+
+PRs are welcome although large changes to the current visualiztion structure are likely to be denied.
 
 ## License 
 
