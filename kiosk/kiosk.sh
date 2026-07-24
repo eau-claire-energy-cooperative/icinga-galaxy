@@ -21,7 +21,7 @@ sed -i 's/"exit_type":"Crashed"/"exit_type":"Normal"/' ~/.config/chromium/Defaul
 chromium \
   --noerrdialogs \
   --disable-infobars \
-  --kiosk "http://url/here" \
+  --kiosk "http://url/here#key=" \
   --incognito \
   --no-first-run \
   --disable-translate \
