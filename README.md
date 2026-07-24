@@ -28,6 +28,8 @@ python3 poll_icinga.py --url https://localhost:5665 --username user --password p
 
 Once running simply load the `index.html` page in a browser. Refer to the __kiosk__ folder for more information on running this as a headless system via a Raspberry Pi in kiosk mode. 
 
+The `poll_icinga.py` file is designed to be run via cron, or other scheduler, and update the sensor data periodically. Pick an interval that makes sense for you and use the `--out` argument to push the to a place it can be loaded by the browser. 
+
 ### Mock Data Generation
 
 The `generate_mock_data.py` script exists to generate a sample `sensors.json` file for use in testing. This can be used in lieu of an actual Icinga connection to make sure the full stack is working. 
