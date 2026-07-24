@@ -210,6 +210,54 @@ let liveMode = false; // becomes true (and stays true) once a live poll succeeds
 let lastFingerprint = null;
 let lastUpdateTime = null; // last_update from the most recent successful live poll
 
+// ─── Snapshot decryption ──────────────────────────────────────────────────────
+// When poll_icinga.py is run with a key, sensors.json is an AES-256-GCM envelope
+// instead of plaintext. The decryption passphrase rides in the URL fragment
+// (#key=...) — the fragment is never sent to the server, so it stays out of
+// access logs and Referer headers. No key, wrong key, or a tampered file all
+// throw, and pollSnapshot's catch drops us to demo mode. Requires a secure
+// context (https:// or localhost) for crypto.subtle to exist.
+
+function getAccessKey() {
+  const frag = new URLSearchParams(location.hash.slice(1));
+  return frag.get('key') || new URLSearchParams(location.search).get('key');
+}
+
+function isEncryptedEnvelope(payload) {
+  return payload && typeof payload === 'object'
+    && typeof payload.ct === 'string'
+    && typeof payload.salt === 'string'
+    && typeof payload.iv === 'string';
+}
+
+function b64ToBytes(b64) {
+  const bin = atob(b64);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+
+async function decryptEnvelope(env, passphrase) {
+  const baseKey = await crypto.subtle.importKey(
+    'raw', new TextEncoder().encode(passphrase), 'PBKDF2', false, ['deriveKey']);
+  const key = await crypto.subtle.deriveKey(
+    { name: 'PBKDF2', salt: b64ToBytes(env.salt), iterations: env.iter || 200000, hash: 'SHA-256' },
+    baseKey,
+    { name: 'AES-GCM', length: 256 },
+    false, ['decrypt']);
+  const plainBuf = await crypto.subtle.decrypt(
+    { name: 'AES-GCM', iv: b64ToBytes(env.iv) }, key, b64ToBytes(env.ct));
+  return JSON.parse(new TextDecoder().decode(plainBuf));
+}
+
+// Plaintext passes straight through; an envelope is decrypted with the URL key.
+async function resolveSnapshot(payload) {
+  if (!isEncryptedEnvelope(payload)) return payload;
+  const key = getAccessKey();
+  if (!key) throw new Error('encrypted snapshot but no key in URL');
+  return decryptEnvelope(payload, key); // GCM auth failure (wrong key) throws
+}
+
 function computeFingerprint(snapshot) {
   const ids = [];
   for (const h of snapshot.hosts) ids.push('h:' + h.id);
@@ -314,7 +362,7 @@ async function pollSnapshot() {
   try {
     const res = await fetch(DATA_URL, { cache: 'no-store' });
     if (!res.ok) throw new Error('HTTP ' + res.status);
-    const snapshot = await res.json();
+    const snapshot = await resolveSnapshot(await res.json());
     if (!snapshot || !Array.isArray(snapshot.hosts) || !Array.isArray(snapshot.sensors)) {
       throw new Error('malformed snapshot');
     }

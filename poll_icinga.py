@@ -4,8 +4,6 @@ check sources (zones/satellites) and writes a sensors.json snapshot in the
 schema galaxy-final.html expects. Runs once per invocation and exits —
 schedule repeated runs externally (Windows Task Scheduler, cron, etc.).
 
-Requires the "requests" package (pip install requests).
-
 Icinga2 API filter reference:
 https://icinga.com/docs/icinga-2/latest/doc/12-icinga2-api/#filters
 
@@ -17,6 +15,7 @@ Find your zone/check_source names via Icinga Web 2 ("Zones" under
 Configuration), or by inspecting last_check_result.check_source on any
 existing host/service in /v1/objects/hosts.
 """
+import base64
 import configargparse
 import getpass
 import json
@@ -25,6 +24,14 @@ import re
 import requests
 import sys
 from datetime import datetime
+
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+
+# AES-256-GCM with a PBKDF2-SHA256-derived key. These parameters are baked into
+# the output envelope so galaxy.js (Web Crypto) can reproduce the key exactly.
+PBKDF2_ITERATIONS = 200_000
 
 
 def slug(name: str) -> str:
@@ -141,6 +148,30 @@ def resolve_password(args):
     return result
 
 
+def encrypt_snapshot(plaintext: bytes, passphrase: str) -> dict:
+    """Return a JSON-serializable envelope galaxy.js can decrypt with the same
+    passphrase. GCM appends its 16-byte auth tag to the ciphertext, which is
+    exactly what Web Crypto's AES-GCM decrypt expects."""
+    salt = os.urandom(16)
+    iv = os.urandom(12)  # 96-bit nonce, the GCM standard
+    kdf = PBKDF2HMAC(algorithm=hashes.SHA256(), length=32, salt=salt,
+                     iterations=PBKDF2_ITERATIONS)
+    key = kdf.derive(passphrase.encode("utf-8"))
+    ciphertext = AESGCM(key).encrypt(iv, plaintext, None)
+
+    def b64(b):
+        return base64.b64encode(b).decode("ascii")
+
+    return {
+        "v": 1,
+        "kdf": "PBKDF2-SHA256",
+        "iter": PBKDF2_ITERATIONS,
+        "salt": b64(salt),
+        "iv": b64(iv),
+        "ct": b64(ciphertext),
+    }
+
+
 def parse_args():
     parser = configargparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument('-c', '--config', is_config_file=True, help='Path to custom config file')
@@ -152,6 +183,8 @@ def parse_args():
     parser.add_argument("--groups", dest="groups", action="append", required=False,
                          help="Icinga group names to use for grouping, if included only these groups are used"
                                " if ommited then first group in host group list is used (repeatable, --group a --group b)")
+    parser.add_argument("--key", help="Passphrase to encrypt the snapshot (AES-256-GCM). If missing the "
+                        "snapshot is written as plaintext JSON, galaxy.html decrypts it via ?/#key=... in the URL.")
     parser.add_argument("--out", default="sensors.json", help="Output path for the JSON snapshot (default: sensors.json)")
     parser.add_argument("--insecure", action="store_true", help="Skip TLS certificate verification (self-signed certs)")
     parser.add_argument("--timeout", type=float, default=30.0, help="HTTP request timeout in seconds (default: 30)")
@@ -182,10 +215,17 @@ def main():
     # set the last update time
     snapshot["last_update"] = datetime.now().astimezone().isoformat(timespec="seconds")
 
-    # write the output file
+    # write the output file — encrypted envelope if a key is configured, else plaintext
     with open(args.out, "w", encoding="utf-8") as f:
-        json.dump(snapshot, f, indent=2)
-    print(f"Wrote {len(snapshot['hosts'])} hosts / {len(snapshot['sensors'])} sensors to {args.out}")
+        if args.key:
+            plaintext = json.dumps(snapshot).encode("utf-8")
+            json.dump(encrypt_snapshot(plaintext, args.key), f, indent=2)
+        else:
+            json.dump(snapshot, f, indent=2)
+
+    how = "encrypted" if args.key else "plaintext"
+    print(f"Wrote {len(snapshot['hosts'])} hosts / {len(snapshot['sensors'])} sensors "
+          f"to {args.out} ({how})")
 
 
 if __name__ == "__main__":

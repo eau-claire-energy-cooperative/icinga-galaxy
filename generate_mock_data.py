@@ -19,10 +19,20 @@ sensors[].host must match a hosts[].id. sensors[].id should be stable
 across polls (this generator uses "<host_id>!<service_slug>").
 """
 import argparse
+import base64
 import json
+import os
 import random
 import re
 from datetime import datetime
+
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+
+# AES-256-GCM with a PBKDF2-SHA256-derived key. These parameters are baked into
+# the output envelope so galaxy.js (Web Crypto) can reproduce the key exactly.
+PBKDF2_ITERATIONS = 200_000
 
 GROUP_NAMES = [
     "Web Frontend", "API Services", "Database Cluster", "Cache Layer",
@@ -97,21 +107,54 @@ def build_snapshot() -> dict:
     return {"hosts": hosts, "sensors": sensors}
 
 
-def write_snapshot(snapshot: dict, out_path: str) -> None:
+def encrypt_snapshot(plaintext: bytes, passphrase: str) -> dict:
+    """Return a JSON-serializable envelope galaxy.js can decrypt with the same
+    passphrase. GCM appends its 16-byte auth tag to the ciphertext, which is
+    exactly what Web Crypto's AES-GCM decrypt expects."""
+    salt = os.urandom(16)
+    iv = os.urandom(12)  # 96-bit nonce, the GCM standard
+    kdf = PBKDF2HMAC(algorithm=hashes.SHA256(), length=32, salt=salt,
+                     iterations=PBKDF2_ITERATIONS)
+    key = kdf.derive(passphrase.encode("utf-8"))
+    ciphertext = AESGCM(key).encrypt(iv, plaintext, None)
+
+    def b64(b):
+        return base64.b64encode(b).decode("ascii")
+
+    return {
+        "v": 1,
+        "kdf": "PBKDF2-SHA256",
+        "iter": PBKDF2_ITERATIONS,
+        "salt": b64(salt),
+        "iv": b64(iv),
+        "ct": b64(ciphertext),
+    }
+
+
+def write_snapshot(snapshot: dict, out_path: str, key: str = None) -> None:
     snapshot["last_update"] = datetime.now().astimezone().isoformat(timespec="seconds")
+    # write an encrypted envelope if a key is given, else plaintext JSON
     with open(out_path, "w", encoding="utf-8") as f:
-        json.dump(snapshot, f, indent=2)
+        if key:
+            plaintext = json.dumps(snapshot).encode("utf-8")
+            json.dump(encrypt_snapshot(plaintext, key), f, indent=2)
+        else:
+            json.dump(snapshot, f, indent=2)
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("out_path", nargs="?", default="sensors.json")
     parser.add_argument("--seed", type=int, default=None, help="Random seed for reproducible output")
+    parser.add_argument("--key", help="Passphrase to encrypt the snapshot (AES-256-GCM). If missing the "
+                        "snapshot is written as plaintext JSON, galaxy.html decrypts it via ?/#key=... in the URL.")
     args = parser.parse_args()
 
     if args.seed is not None:
         random.seed(args.seed)
 
     snapshot = build_snapshot()
-    write_snapshot(snapshot, args.out_path)
-    print(f"Wrote {len(snapshot['hosts'])} hosts / {len(snapshot['sensors'])} sensors to {args.out_path}")
+    write_snapshot(snapshot, args.out_path, args.key)
+    how = "encrypted" if args.key else "plaintext"
+    print(f"Wrote {len(snapshot['hosts'])} hosts / {len(snapshot['sensors'])} sensors "
+          f"to {args.out_path} ({how})")
