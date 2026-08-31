@@ -1,5 +1,5 @@
 [Desktop Entry]
 Type=Application
 Name=Kiosk
-Exec=/home/[username]/kiosk.sh
+Exec=/bin/sh -c 'exec /bin/sh "$HOME/kiosk.sh"'
 X-GNOME-Autostart-enabled=true
